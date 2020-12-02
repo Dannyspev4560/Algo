@@ -31,6 +31,9 @@ def TR(DF):
 
 
 def get_tickers():
+    #url = 'ftp://ftp.nasdaqtrader.com/SymbolDirectory/nasdaqlisted.txt' # all nasdaq tickers
+    #df = pd.read_csv(url, sep='|')
+    #tickers=df['Symbol'].tolist()
     tickers = []
     good_tickers={}
     with open('C:\\Users\\danny\\coding\\algo\\udemyCourse1\\bot\\companylist_nasdaq.csv', 'r') as file:
@@ -115,37 +118,31 @@ class BreakoutStrategy:
             ticker.set_DF(df)
             stocks_list[ticker.name]=ticker
 
-
             #strategy logic
 
             if ticker.get_signal()=="":
                 if df["High"].iloc[-1] >= df["roll_max_cp"].iloc[-1] and df["Volume"].iloc[-1] > 1.5 * df["roll_max_vol"].iloc[-2]:
-
                     ticker.set_signal("buy")
                     ticker.buy(self._api)
                 elif df["Low"].iloc[-1] <= df["roll_min_cp"].iloc[-1] and df["Volume"].iloc[-1] > 1.5 * df["roll_max_vol"].iloc[-2]:
-
                     ticker.set_signal("sell")
                     ticker.sell(self._api)
 
             if ticker.get_signal()=="buy":
                 if df["Adj Close"].iloc[-1] < df["Adj Close"].iloc[-2] - df["ATR"].iloc[-2]:
-
                     ticker.set_signal("")#0 shares
                     ticker.sell(self._api)
                 elif df["Low"].iloc[-1] <= df["roll_min_cp"].iloc[-1] and \
                         df["Volume"].iloc[-1] > 1.5 * df["roll_max_vol"].iloc[-2]:
-
                     ticker.set_signal("sell")
                     ticker.sell(self._api)#0 shares
                     ticker.sell(self._api)#enter short
 
             if ticker.get_signal()=="sell":
                 if df["Adj Close"].iloc[-1] > df["Adj Close"].iloc[-2] + df["ATR"].iloc[-2]:
-
+                    ticker.set_signal("")
                     ticker.buy(self._api)#0 shares
                 elif df["High"].iloc[-1] >= df["roll_max_cp"].iloc[-1] and df["Volume"].iloc[-1] > 1.5 * df["roll_max_vol"].iloc[-2]:
-
                     ticker.set_signal("buy")
                     ticker.buy(self._api)#0 shares
                     ticker.buy(self._api)#enter short
@@ -153,20 +150,30 @@ class BreakoutStrategy:
 
 
 api = tradeapi.REST(keys.API_Key, keys.Secret_Key, base_url='https://paper-api.alpaca.markets')
-clock = api.get_clock()
 bot=None
+todays_open_time=api.get_clock().next_open #must save this
+symbols=[]
 while(1):
     starttime = time.time()
     #get_tickers()
-    symbols=[]
-    todays_open_time=clock.next_open
-    if clock.is_open:
-        if (clock.next_close - clock.timestamp).total_seconds() < 900:#15 min window to close
-            api.close_all_positions()# close all postions and gather data(daily retrun)
-
-        if (clock.timestamp -todays_open_time).total_seconds() < 1200:
-
-            time.sleep(1200)#20 min sleep till i have more data about the stocks
+    attempts=3
+    if not(symbols):
+        while(attempts ):
+            try:
+                symbols=get_tickers()
+                break
+            except:
+                print('Error retrieving data...retrying  ')
+                symbols = get_tickers()
+                attempts-=1
+    
+    if api.get_clock().is_open and symbols:
+        if (api.get_clock().next_close - api.get_clock().timestamp).total_seconds() < 900:#15 min window to close
+            api.close_all_positions()# close all postions 
+            print("exiting")
+            break
+        if (api.get_clock().timestamp -todays_open_time).total_seconds() < 1200:
+            time.sleep(1200-starttime)#20 min sleep till i have more data about the stocks
         elif bot:
             tickers = []
             for symbol in symbols:
@@ -180,10 +187,12 @@ while(1):
             bot.run()
             time.sleep(60)
             # time.sleep(time.time()-starttime +1)# +1 Safety factor#trading in 1 min window
-
+    elif not symbols:
+        #notify by mail-bo tickers 
+        break
     else:
-     
-        todays_open_time=clock.next_open
-        time_to_open = clock.next_open - clock.timestamp
+
+        todays_open_time=api.get_clock().next_open
+        time_to_open = api.get_clock().next_open - api.get_clock().timestamp
         print("time till market opens: {}".format(time_to_open))
         time.sleep(time_to_open.seconds)
