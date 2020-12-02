@@ -31,9 +31,6 @@ def TR(DF):
 
 
 def get_tickers():
-    #url = 'ftp://ftp.nasdaqtrader.com/SymbolDirectory/nasdaqlisted.txt' # all nasdaq tickers
-    #df = pd.read_csv(url, sep='|')
-    #tickers=df['Symbol'].tolist()
     tickers = []
     good_tickers={}
     with open('C:\\Users\\danny\\coding\\algo\\udemyCourse1\\bot\\companylist_nasdaq.csv', 'r') as file:
@@ -107,71 +104,70 @@ class BreakoutStrategy:
         stocks_list = {}
         #downloading data for each
         for ticker in self._tickers:
-            barset = self._api.get_barset(symbols=ticker.name,timeframe='1Min', limit=22)
-            #aapl_bars = barset['AAPL']
+            barset = self._api.get_barset(symbols=ticker.name,timeframe='1Min', limit=18)
             df=barset.df
             df.columns=["Open","High","Low","Adj Close","Volume"]
-            df["ATR"] = ATR(df, 20)
-            df["roll_max_cp"] = df["High"].rolling(20).max()
-            df["roll_min_cp"] = df["Low"].rolling(20).min()
-            df["roll_max_vol"] = df["Volume"].rolling(20).max()
+            df["ATR"] = ATR(df, 14)
+            df["roll_max_cp"] = df["High"].rolling(14).max()
+            df["roll_min_cp"] = df["Low"].rolling(14).min()
+            df["roll_max_vol"] = df["Volume"].rolling(14).max()
             df.dropna(inplace=True)
             ticker.set_DF(df)
             stocks_list[ticker.name]=ticker
-            #print(df)
+
 
             #strategy logic
-            #signal=""
+
             if ticker.get_signal()=="":
                 if df["High"].iloc[-1] >= df["roll_max_cp"].iloc[-1] and df["Volume"].iloc[-1] > 1.5 * df["roll_max_vol"].iloc[-2]:
-                    #signal = "Buy"  # not the same signal
-                    ticker.set_signal("long")
+
+                    ticker.set_signal("buy")
                     ticker.buy(self._api)
                 elif df["Low"].iloc[-1] <= df["roll_min_cp"].iloc[-1] and df["Volume"].iloc[-1] > 1.5 * df["roll_max_vol"].iloc[-2]:
-                    #signal = "Sell"
-                    ticker.set_signal("short")
+
+                    ticker.set_signal("sell")
                     ticker.sell(self._api)
 
-            if ticker.get_signal()=="long":
+            if ticker.get_signal()=="buy":
                 if df["Adj Close"].iloc[-1] < df["Adj Close"].iloc[-2] - df["ATR"].iloc[-2]:
-                    #signal = ""
-                    ticker.set_signal("")
+
+                    ticker.set_signal("")#0 shares
+                    ticker.sell(self._api)
                 elif df["Low"].iloc[-1] <= df["roll_min_cp"].iloc[-1] and \
                         df["Volume"].iloc[-1] > 1.5 * df["roll_max_vol"].iloc[-2]:
-                    #signal = "Sell"
-                    ticker.set_signal("")
-                    ticker.sell(self._api)
 
-            if ticker.get_signal()=="short":
+                    ticker.set_signal("sell")
+                    ticker.sell(self._api)#0 shares
+                    ticker.sell(self._api)#enter short
+
+            if ticker.get_signal()=="sell":
                 if df["Adj Close"].iloc[-1] > df["Adj Close"].iloc[-2] + df["ATR"].iloc[-2]:
-                    signal = ""
+
+                    ticker.buy(self._api)#0 shares
                 elif df["High"].iloc[-1] >= df["roll_max_cp"].iloc[-1] and df["Volume"].iloc[-1] > 1.5 * df["roll_max_vol"].iloc[-2]:
-                    signal = "Buy"
-                    ticker.set_signal("")
-                    ticker.buy(self._api)
+
+                    ticker.set_signal("buy")
+                    ticker.buy(self._api)#0 shares
+                    ticker.buy(self._api)#enter short
+
+
 
 api = tradeapi.REST(keys.API_Key, keys.Secret_Key, base_url='https://paper-api.alpaca.markets')
 clock = api.get_clock()
+bot=None
 while(1):
     starttime = time.time()
-    get_tickers()
+    #get_tickers()
     symbols=[]
-    bot=""
     todays_open_time=clock.next_open
-    if not clock.is_open:
+    if clock.is_open:
         if (clock.next_close - clock.timestamp).total_seconds() < 900:#15 min window to close
             api.close_all_positions()# close all postions and gather data(daily retrun)
 
-        if (clock.timestamp -todays_open_time).total_seconds() < 1800:
-            if len(symbols) < 5:
-                try:
-                    symbols = get_tickers()
-                except:
-                    print('Error retrieving data ')
-                    #send me email and add other alternatives- stmp optional
-                    break
-            time.sleep(1800)#30 min sleep till i have more data about the stocks
-        elif bot=="":
+        if (clock.timestamp -todays_open_time).total_seconds() < 1200:
+
+            time.sleep(1200)#20 min sleep till i have more data about the stocks
+        elif bot:
             tickers = []
             for symbol in symbols:
                 #print(symbol)
@@ -179,46 +175,15 @@ while(1):
             bot= BreakoutStrategy(api, tickers)
             bot.run()
             time.sleep(60)
-            #time.sleep(time.time()-starttime +1)# +1 Safety factor
+            #time.sleep(time.time()-starttime +1)# +1 Safety factor#trading in 1 min window
         else:
             bot.run()
             time.sleep(60)
+            # time.sleep(time.time()-starttime +1)# +1 Safety factor#trading in 1 min window
 
     else:
-        if len(symbols)<5:
-            for i in range(0, 10):
-                while True:
-                    try:
-                        symbols = get_tickers()
-                    except:
-                        time.sleep(300)#5 mins between each try
-                        continue
-                    break
+     
         todays_open_time=clock.next_open
         time_to_open = clock.next_open - clock.timestamp
         print("time till market opens: {}".format(time_to_open))
-        time.sleep(600)
-
-
-
-
-"""
-async def barseCall(api,tickers):
-    stocks = {}
-    for tick in tickers:
-        barset = await api.get_barset(symbols=tick, timeframe='1Min', limit=22)
-        df = barset.df
-        df.columns = ["Open", "High", "Low", "Adj Close", "Volume"]
-        stocks["tick"]=df
-    return stocks
-
-"""
-"""
-starttime=time.time()
-stocks = {}
-
-for tick in symbols:
-    async barset = api.get_barset(symbols=tick, timeframe='1Min', limit=22)
-
-print(time.time()-starttime)
-"""
+        time.sleep(time_to_open.seconds)
