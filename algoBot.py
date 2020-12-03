@@ -1,12 +1,11 @@
 import alpaca_trade_api as tradeapi
 import bot.alpaca_key as keys
 import time
-import numpy as np
 import pandas as pd
 import datetime as dt
 import yfinance as yf
 import csv
-import asyncio
+
 
 
 def ATR(DF,n):
@@ -31,9 +30,6 @@ def TR(DF):
 
 
 def get_tickers():
-    #url = 'ftp://ftp.nasdaqtrader.com/SymbolDirectory/nasdaqlisted.txt' # all nasdaq tickers
-    #df = pd.read_csv(url, sep='|')
-    #tickers=df['Symbol'].tolist()
     tickers = []
     good_tickers={}
     with open('C:\\Users\\danny\\coding\\algo\\udemyCourse1\\bot\\companylist_nasdaq.csv', 'r') as file:
@@ -151,7 +147,7 @@ class BreakoutStrategy:
 
 api = tradeapi.REST(keys.API_Key, keys.Secret_Key, base_url='https://paper-api.alpaca.markets')
 bot=None
-todays_open_time=api.get_clock().next_open #must save this
+todays_open_time=api.get_clock().next_open #must be deployed at noon every day
 symbols=[]
 while(1):
     starttime = time.time()
@@ -166,14 +162,15 @@ while(1):
                 print('Error retrieving data...retrying  ')
                 symbols = get_tickers()
                 attempts-=1
-    
+
     if api.get_clock().is_open and symbols:
         if (api.get_clock().next_close - api.get_clock().timestamp).total_seconds() < 900:#15 min window to close
-            api.close_all_positions()# close all postions 
+            api.close_all_positions()# close all postions
             print("exiting")
             break
         if (api.get_clock().timestamp -todays_open_time).total_seconds() < 1200:
-            time.sleep(1200-starttime)#20 min sleep till i have more data about the stocks
+
+            time.sleep(1200-api.get_clock().timestamp -todays_open_time)#20 min sleep till i have more data about the stocks
         elif bot:
             tickers = []
             for symbol in symbols:
@@ -188,7 +185,7 @@ while(1):
             time.sleep(60)
             # time.sleep(time.time()-starttime +1)# +1 Safety factor#trading in 1 min window
     elif not symbols:
-        #notify by mail-bo tickers 
+        #notify by mail-bo tickers
         break
     else:
 
