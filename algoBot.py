@@ -169,7 +169,6 @@ while(1):
             print("exiting")
             break
         if (api.get_clock().timestamp -todays_open_time).total_seconds() < 1200:
-
             time.sleep(1200-api.get_clock().timestamp -todays_open_time)#20 min sleep till i have more data about the stocks
         elif bot:
             tickers = []
@@ -177,13 +176,21 @@ while(1):
                 #print(symbol)
                 tickers.append(ticker(symbol))
             bot= BreakoutStrategy(api, tickers)
-            bot.run()
-            time.sleep(60)
-            #time.sleep(time.time()-starttime +1)# +1 Safety factor#trading in 1 min window
+            try:
+                bot.run()
+                time.sleep(60)
+                #time.sleep(time.time()-starttime +1)# +1 Safety factor#trading in 1 min window
+            except:
+                time.sleep(60)
+                # time.sleep(time.time()-starttime +1)# +1 Safety factor#trading in 1 min window
         else:
-            bot.run()
-            time.sleep(60)
-            # time.sleep(time.time()-starttime +1)# +1 Safety factor#trading in 1 min window
+            try:
+                bot.run()
+                time.sleep(60)
+                # time.sleep(time.time()-starttime +1)# +1 Safety factor#trading in 1 min window
+            except:
+                time.sleep(60)
+                # time.sleep(time.time()-starttime +1)# +1 Safety factor#trading in 1 min window
     elif not symbols:
         #notify by mail-bo tickers
         break
