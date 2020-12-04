@@ -2,11 +2,9 @@ import alpaca_trade_api as tradeapi
 import bot.alpaca_key as keys
 import time
 import pandas as pd
-import datetime as dt
 import yfinance as yf
 import csv
-
-
+import datetime as dt
 
 def ATR(DF,n):
     "function to calculate True Range and Average True Range"
@@ -30,6 +28,9 @@ def TR(DF):
 
 
 def get_tickers():
+    #url = 'ftp://ftp.nasdaqtrader.com/SymbolDirectory/nasdaqlisted.txt' # all nasdaq tickers
+    #df = pd.read_csv(url, sep='|')
+    #tickers=df['Symbol'].tolist()
     tickers = []
     good_tickers={}
     with open('C:\\Users\\danny\\coding\\algo\\udemyCourse1\\bot\\companylist_nasdaq.csv', 'r') as file:
@@ -53,15 +54,18 @@ def get_tickers():
 
         except:
             print("bad ticker: {}".format(ticker))
+    if(len(good_tickers)>6):
+        sorted_dict = dict(sorted(good_tickers.items(), key=lambda item: item[1], reverse=True)[:6])# get top 6()
+        return sorted_dict.keys()
 
-
-    return good_tickers.keys()
+    else: return good_tickers.keys()
 
 class ticker:
     def __init__(self,name):
         self.name=name
         self.signal=""
         self.DF=pd.DataFrame
+        self.sample_time=0
     def name(self):
         return self.name()
     def set_signal(self,sig):
@@ -72,6 +76,10 @@ class ticker:
         self.DF=df
     def get_DF(self):
         return self.DF
+    def set_sample_time(self,time):
+        self.sample_time=time
+    def sample_time(self):
+        return self.sample_time
     def sell(self,api):
         api.submit_order(
             symbol=self.name,
@@ -105,6 +113,14 @@ class BreakoutStrategy:
         for ticker in self._tickers:
             barset = self._api.get_barset(symbols=ticker.name,timeframe='1Min', limit=18)
             df=barset.df
+            # due to demo issue-cant get live data of every minute-if the last sample time hasnt changed we wont enter this iiteration
+            dummy=df.copy()
+            dummy.reset_index(inplace=True)
+            if not ticker.sample_time:
+                ticker.set_sample_time(dummy["index"].iloc[-1])
+            elif(ticker.sample_time!= dummy["index"].iloc[-1]):
+                ticker.set_sample_time(df.keys[::-1])
+            else: break #exit this iiteration
             df.columns=["Open","High","Low","Adj Close","Volume"]
             df["ATR"] = ATR(df, 14)
             df["roll_max_cp"] = df["High"].rolling(14).max()
@@ -116,12 +132,13 @@ class BreakoutStrategy:
 
             #strategy logic
 
+
             if ticker.get_signal()=="":
                 if df["High"].iloc[-1] >= df["roll_max_cp"].iloc[-1] and df["Volume"].iloc[-1] > 1.5 * df["roll_max_vol"].iloc[-2]:
-                    ticker.set_signal("buy")
+                    ticker.set_signal("buy")#long
                     ticker.buy(self._api)
                 elif df["Low"].iloc[-1] <= df["roll_min_cp"].iloc[-1] and df["Volume"].iloc[-1] > 1.5 * df["roll_max_vol"].iloc[-2]:
-                    ticker.set_signal("sell")
+                    ticker.set_signal("sell")#short
                     ticker.sell(self._api)
 
             if ticker.get_signal()=="buy":
@@ -141,7 +158,7 @@ class BreakoutStrategy:
                 elif df["High"].iloc[-1] >= df["roll_max_cp"].iloc[-1] and df["Volume"].iloc[-1] > 1.5 * df["roll_max_vol"].iloc[-2]:
                     ticker.set_signal("buy")
                     ticker.buy(self._api)#0 shares
-                    ticker.buy(self._api)#enter short
+                    ticker.buy(self._api)#enter long
 
 
 
@@ -169,28 +186,30 @@ while(1):
             print("exiting")
             break
         if (api.get_clock().timestamp -todays_open_time).total_seconds() < 1200:
+
             time.sleep(1200-api.get_clock().timestamp -todays_open_time)#20 min sleep till i have more data about the stocks
-        elif bot:
+        elif not bot:
             tickers = []
             for symbol in symbols:
                 #print(symbol)
                 tickers.append(ticker(symbol))
             bot= BreakoutStrategy(api, tickers)
             try:
+                #time.sleep(60-api.get_clock().timestamp.to_pydatetime().second)
                 bot.run()
-                time.sleep(60)
-                #time.sleep(time.time()-starttime +1)# +1 Safety factor#trading in 1 min window
+                #time.sleep(60)
+                time.sleep(60-api.get_clock().timestamp.to_pydatetime().second)#set script clock as close asvpossible to api's clock
             except:
-                time.sleep(60)
-                # time.sleep(time.time()-starttime +1)# +1 Safety factor#trading in 1 min window
+                #time.sleep(60)
+                time.sleep(60-api.get_clock().timestamp.to_pydatetime().second)
         else:
             try:
                 bot.run()
                 time.sleep(60)
-                # time.sleep(time.time()-starttime +1)# +1 Safety factor#trading in 1 min window
+                #  time.sleep(60-api.get_clock().timestamp.to_pydatetime().second)
             except:
                 time.sleep(60)
-                # time.sleep(time.time()-starttime +1)# +1 Safety factor#trading in 1 min window
+                #  time.sleep(60-api.get_clock().timestamp.to_pydatetime().second)
     elif not symbols:
         #notify by mail-bo tickers
         break
@@ -198,5 +217,5 @@ while(1):
 
         todays_open_time=api.get_clock().next_open
         time_to_open = api.get_clock().next_open - api.get_clock().timestamp
-        print("time till market opens: {}".format(time_to_open))
+        print("Timestamp:{} Time till market opens: {}".format(dt.datetime.now(),time_to_open))
         time.sleep(time_to_open.seconds)
